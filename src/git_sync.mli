@@ -14,7 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-type protocol = [ `SSH | `Git | `Smart_HTTP ]
+type protocol = [ `SSH | `Git | `Smart_HTTP | `Local ]
 
 val protocol: Uri.t -> [`Ok of protocol | `Not_supported of string | `Unknown]
 

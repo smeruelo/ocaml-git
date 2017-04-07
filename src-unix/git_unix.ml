@@ -185,6 +185,18 @@ module IO_Sync = struct
              | Unix.Unix_error _ -> Lwt.return_unit
              | e -> Lwt.fail e))
 
+  let with_local_process ?init uri fn =
+    Log.debug (fun l -> l "Connecting to %s" (Uri.to_string uri));
+    let cmd = match init with
+      | None   -> [| "local1"; "local2"; |]
+      | Some x -> [| "local1"; "local2"; x |]
+    in
+    let env = Unix.environment () in
+    let p = Lwt_process.open_process_full ~env ("local", cmd) in
+    Lwt.finalize
+      (fun () -> fn (p#stdout, p#stdin))
+      (fun () -> let _ = Log.debug (fun l -> l "*****"); p#close in Lwt.return_unit)
+
   module IC = struct
     type t = Lwt_io.input_channel
     let make ?close perform_io =
@@ -213,6 +225,7 @@ module IO_Sync = struct
     | `Ok `SSH -> with_ssh_process ?init uri fn
     | `Ok `Git -> with_conduit ?init uri fn
     | `Ok `Smart_HTTP -> HTTP.with_http ?init (with_conduit ?init:None) uri fn
+    | `Ok `Local -> with_local_process ?init uri fn
     | `Not_supported x ->
       Lwt.fail (Failure ("Scheme " ^ x ^ " not supported yet"))
     | `Unknown ->

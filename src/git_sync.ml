@@ -19,19 +19,20 @@ open Lwt.Infix
 
 module Log = (val Git_misc.src_log "sync" : Logs.LOG)
 
-type protocol = [ `SSH | `Git | `Smart_HTTP ]
+type protocol = [ `SSH | `Git | `Smart_HTTP | `Local ]
 
 let protocol uri = match Uri.scheme uri with
   | Some "git"     -> `Ok `Git
   | Some "git+ssh" -> `Ok `SSH
   | Some "http"
   | Some "https"   -> `Ok `Smart_HTTP
+  | Some "file"    -> `Ok `Local
   | Some x -> `Not_supported x
   | None   -> `Unknown
 
 let err fmt = Fmt.kstrf failwith fmt
 let err_unknkown () = err "Unknown Git protocol"
-let err_not_supported x = err "%s is not a supported Git protocol" x
+let err_not_supported x = err "%s is not a supported Git protocol :(" x
 let err_unknown_tag t = err "%a: unknown tag" Git_reference.pp t
 
 let protocol_exn uri = match protocol uri with
@@ -43,6 +44,7 @@ let pp_protocol ppf = function
   | `Git -> Fmt.string ppf "git"
   | `SSH -> Fmt.string ppf "ssh"
   | `Smart_HTTP -> Fmt.string ppf "smart-http"
+  | `Local -> Fmt.string ppf "local"
 
 type want = [ `Ref of Git_reference.t | `Commit of Git_hash.Commit.t ]
 
@@ -469,6 +471,7 @@ module Make (IO: IO) (Store: Git_store.S) = struct
       | `Git -> Some (git t)
       | `SSH -> Some (ssh t)
       | `Smart_HTTP -> Some (smart_http t)
+      | `Local -> None
 
     let create request ~discover gri =
       Log.debug (fun l ->
@@ -476,7 +479,7 @@ module Make (IO: IO) (Store: Git_store.S) = struct
             pp_request request discover (Git_gri.to_string gri));
       let protocol = protocol_exn (Git_gri.to_uri gri) in
       let gri = match protocol with
-        | `SSH | `Git -> gri
+        | `SSH | `Git | `Local -> gri
         | `Smart_HTTP ->
           let service = if discover then "info/refs?service=" else "" in
           let url = Git_gri.to_string gri in
@@ -501,7 +504,7 @@ module Make (IO: IO) (Store: Git_store.S) = struct
       let error fmt = error ("[SMART-HTTP] Listing.input:" ^^ fmt) in
       let skip_smart_http () =
         match protocol with
-        | `Git | `SSH -> Lwt.return_unit
+        | `Git | `SSH | `Local -> Lwt.return_unit
         | `Smart_HTTP ->
           PacketLine.input ic >>= function
           | None      -> error "missing # header."
